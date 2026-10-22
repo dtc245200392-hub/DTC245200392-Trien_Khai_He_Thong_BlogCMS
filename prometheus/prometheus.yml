@@ -1,0 +1,25 @@
+# =============================================================================
+# Cấu hình Prometheus Scrape Targets (Bước 4 - Commit 2)
+# Đề tài: Triển khai và quản trị hệ thống Blog / CMS
+# Sinh viên: Nguyễn Ngọc Chi - MSSV: DTC245200392
+# =============================================================================
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  # Thu thập chỉ số nội tại của chính Prometheus Server
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Thu thập chỉ số tài nguyên phần cứng hệ thống (Host CPU, RAM, Disk, Network)
+  - job_name: 'node-exporter'
+    static_configs:
+      - targets: ['node-exporter:9100']
+
+  # Thu thập chỉ số tài nguyên chi tiết từng Docker Container (CPU, Memory, I/O)
+  - job_name: 'cadvisor'
+    static_configs:
+      - targets: ['cadvisor:8080']

@@ -1,0 +1,15 @@
+# =============================================================================
+# Tự động nạp Dashboards cho Grafana (Bước 4 - Commit 2)
+# =============================================================================
+
+apiVersion: 1
+
+providers:
+  - name: 'System Monitoring'
+    orgId: 1
+    folder: 'Monitoring'
+    type: file
+    disableDeletion: false
+    editable: true
+    options:
+      path: /var/lib/grafana/dashboards

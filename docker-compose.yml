@@ -3,7 +3,7 @@ version: '3.8'
 # =============================================================================
 # BÀI TẬP LỚN: TRIỂN KHAI VÀ QUẢN TRỊ HỆ THỐNG BLOG / CMS
 # Sinh viên: Nguyễn Ngọc Chi - MSSV: DTC245200392 - Lớp: CNTT K23C
-# Bước 1, Bước 2 & Bước 3: Web App, Cơ sở dữ liệu và Nginx Reverse Proxy (SSL)
+# Bước 4 - Commit 2: Tích hợp Giám sát Hệ thống với Prometheus & Grafana
 # =============================================================================
 
 networks:
@@ -11,11 +11,15 @@ networks:
     driver: bridge
   backend-net:
     driver: bridge
+  monitoring-net:
+    driver: bridge
 
 volumes:
   db_data:
   wordpress_data:
   nginx_logs:
+  prometheus_data:
+  grafana_data:
 
 services:
   # -------------------------------------------------------------
@@ -104,3 +108,65 @@ services:
       - nginx_logs:/var/log/nginx
     networks:
       - frontend-net
+
+  # -------------------------------------------------------------
+  # Giám sát Metrics: Prometheus & Exporters (Bước 4 - Commit 2)
+  # -------------------------------------------------------------
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: cms_prometheus
+    restart: always
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    networks:
+      - monitoring-net
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: cms_grafana
+    restart: always
+    depends_on:
+      - prometheus
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-AdminGrafana2026!}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    networks:
+      - monitoring-net
+
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: cms_node_exporter
+    restart: always
+    ports:
+      - "${NODE_EXPORTER_PORT:-9100}:9100"
+    networks:
+      - monitoring-net
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:latest
+    container_name: cms_cadvisor
+    restart: always
+    ports:
+      - "${CADVISOR_PORT:-8080}:8080"
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    networks:
+      - monitoring-net

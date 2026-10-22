@@ -11,11 +11,15 @@
 
 ## 1. Tổng quan Kiến trúc Hệ thống
 
-Hệ thống được thiết kế theo mô hình kiến trúc container hóa kết hợp reverse proxy bảo mật và cô lập mạng:
-- **Ứng dụng Web**: WordPress (latest) chạy trên mạng nội bộ Docker.
-- **Cơ sở dữ liệu**: MySQL 8.0 được cô lập an toàn trong `backend-net`, dữ liệu được lưu trữ bền vững qua Docker Named Volume `db_data`.
-- **Quản trị Cơ sở dữ liệu**: phpMyAdmin kết nối an toàn với MySQL.
-- **Reverse Proxy Gateway**: Nginx Reverse Proxy tiếp nhận lưu lượng cổng 80 (HTTP) và cổng 443 (HTTPS), tự động chuyển hướng sang HTTPS, sử dụng chứng chỉ SSL/TLS tự ký, và áp dụng các Security Headers (X-Frame-Options, X-Content-Type-Options, X-XSS-Protection).
+Hệ thống được thiết kế theo mô hình kiến trúc container hóa kết hợp giám sát toàn diện và cô lập mạng:
+- **Nginx Reverse Proxy**: Đóng vai trò cổng giao tiếp chính (gateway) nhận request từ ngoài qua cổng 80/443, thực hiện định tuyến, áp dụng bảo mật HTTP headers và SSL/TLS tự ký.
+- **Ứng dụng Web & Database**: WordPress và MySQL 8.0 chạy trong container riêng biệt, kết nối trực tiếp qua Docker network cô lập (`backend-net`, `frontend-net`).
+- **Quản trị Cơ sở dữ liệu**: phpMyAdmin hỗ trợ quản trị trực quan.
+- **Giám sát Metrics (Prometheus + Grafana)**:
+  - **Prometheus**: Định kỳ scrape metrics từ Node Exporter và cAdvisor mỗi 15s.
+  - **Node Exporter**: Thu thập chỉ số tài nguyên phần cứng hệ thống (Host CPU, RAM, Disk).
+  - **cAdvisor**: Đo lường và giám sát mức độ tiêu thụ tài nguyên chi tiết của từng Docker container.
+  - **Grafana**: Trực quan hóa dữ liệu thời gian thực với dashboard quản trị tự động nạp (Provisioning).
 
 ---
 
@@ -23,8 +27,8 @@ Hệ thống được thiết kế theo mô hình kiến trúc container hóa k�
 
 ```text
 DTC245200392-Trien_Khai_He_Thong_BlogCMS/
-├── docker-compose.yml          # Khai báo các dịch vụ hệ thống
-├── .env.example                # Mẫu biến môi trường
+├── docker-compose.yml          # Khai báo toàn bộ các dịch vụ hệ thống
+├── .env.example                # Mẫu khai báo biến môi trường
 ├── .env                        # Biến môi trường thực tế (được bảo vệ)
 ├── .gitignore                  # Bỏ qua tệp nhạy cảm và tệp rác
 ├── README.md                   # Hướng dẫn chi tiết
@@ -35,6 +39,16 @@ DTC245200392-Trien_Khai_He_Thong_BlogCMS/
 │   └── ssl/
 │       ├── nginx.crt           # Chứng chỉ SSL tự ký
 │       └── nginx.key           # Private key RSA 2048-bit
+├── prometheus/
+│   └── prometheus.yml          # Cấu hình scrape targets cho Prometheus
+├── grafana/
+│   ├── provisioning/
+│   │   ├── datasources/
+│   │   │   └── datasources.yml # Tự động cấu hình nguồn Prometheus
+│   │   └── dashboards/
+│   │       └── dashboards.yml  # Tự động nạp dashboard
+│   └── dashboards/
+│       └── docker-metrics.json # Dashboard mẫu giám sát container
 └── scripts/
     ├── generate-ssl.sh         # Script sinh chứng chỉ SSL trên Linux/macOS
     └── generate-ssl.bat        # Script sinh chứng chỉ SSL trên Windows
@@ -45,7 +59,6 @@ DTC245200392-Trien_Khai_He_Thong_BlogCMS/
 ## 3. Hướng dẫn Khởi chạy Hệ thống
 
 ### 3.1. Chuẩn bị biến môi trường
-Sao chép tệp mẫu cấu hình sang tệp cấu hình thực tế:
 ```bash
 cp .env.example .env
 ```
@@ -66,11 +79,17 @@ Khởi chạy hệ thống ở chế độ nền (detached mode):
 docker compose up -d
 ```
 
-### 3.4. Kiểm tra trạng thái và truy cập dịch vụ
+### 3.4. Kiểm tra trạng thái và danh sách dịch vụ
 Kiểm tra các container đang chạy:
 ```bash
 docker compose ps
 ```
 
-- **Blog CMS WordPress (HTTPS)**: [https://localhost](https://localhost)
-- **phpMyAdmin**: [http://localhost:8081](http://localhost:8081) hoặc [https://localhost/phpmyadmin/](https://localhost/phpmyadmin/)
+| Dịch vụ | Cổng công khai | Đường dẫn truy cập | Ghi chú |
+|---|---|---|---|
+| **Blog CMS WordPress** | 80, 443 | [https://localhost](https://localhost) | Cổng 80 tự redirect sang 443 HTTPS |
+| **phpMyAdmin** | 8081 | [http://localhost:8081](http://localhost:8081) | Hoặc qua [https://localhost/phpmyadmin/](https://localhost/phpmyadmin/) |
+| **Prometheus Web UI** | 9090 | [http://localhost:9090](http://localhost:9090) | Xem trạng thái scrape targets và PromQL |
+| **Grafana Dashboard** | 3000 | [http://localhost:3000](http://localhost:3000) | Đăng nhập: `admin` / `AdminGrafana2026!` |
+| **Node Exporter** | 9100 | [http://localhost:9100/metrics](http://localhost:9100/metrics) | Chỉ số máy chủ host |
+| **cAdvisor** | 8080 | [http://localhost:8080](http://localhost:8080) | Giao diện và metrics container Docker |
