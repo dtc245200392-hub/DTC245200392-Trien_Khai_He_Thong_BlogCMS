@@ -1,0 +1,106 @@
+version: '3.8'
+
+# =============================================================================
+# BÀI TẬP LỚN: TRIỂN KHAI VÀ QUẢN TRỊ HỆ THỐNG BLOG / CMS
+# Sinh viên: Nguyễn Ngọc Chi - MSSV: DTC245200392 - Lớp: CNTT K23C
+# Bước 1, Bước 2 & Bước 3: Web App, Cơ sở dữ liệu và Nginx Reverse Proxy (SSL)
+# =============================================================================
+
+networks:
+  frontend-net:
+    driver: bridge
+  backend-net:
+    driver: bridge
+
+volumes:
+  db_data:
+  wordpress_data:
+  nginx_logs:
+
+services:
+  # -------------------------------------------------------------
+  # Dịch vụ Cơ sở dữ liệu MySQL (Bước 1 & Bước 2)
+  # -------------------------------------------------------------
+  db:
+    image: mysql:8.0
+    container_name: cms_mysql
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    volumes:
+      - db_data:/var/lib/mysql
+    networks:
+      - backend-net
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # -------------------------------------------------------------
+  # Dịch vụ Ứng dụng Web WordPress CMS (Bước 1 & Bước 2)
+  # -------------------------------------------------------------
+  wordpress:
+    image: wordpress:latest
+    container_name: cms_wordpress
+    restart: always
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      WORDPRESS_DB_HOST: db:3306
+      WORDPRESS_DB_USER: ${MYSQL_USER}
+      WORDPRESS_DB_PASSWORD: ${MYSQL_PASSWORD}
+      WORDPRESS_DB_NAME: ${MYSQL_DATABASE}
+      WORDPRESS_CONFIG_EXTRA: |
+        define('WP_HOME', 'https://localhost');
+        define('WP_SITEURL', 'https://localhost');
+        if (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https') {
+            $_SERVER['HTTPS'] = 'on';
+        }
+    volumes:
+      - wordpress_data:/var/www/html
+    networks:
+      - backend-net
+      - frontend-net
+
+  # -------------------------------------------------------------
+  # Dịch vụ Quản trị Cơ sở dữ liệu phpMyAdmin (Bước 1 & Bước 2)
+  # -------------------------------------------------------------
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin
+    container_name: cms_phpmyadmin
+    restart: always
+    depends_on:
+      - db
+    environment:
+      PMA_HOST: db
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+    ports:
+      - "${PMA_PORT:-8081}:80"
+    networks:
+      - backend-net
+      - frontend-net
+
+  # -------------------------------------------------------------
+  # Dịch vụ Nginx Reverse Proxy & Bảo mật SSL (Bước 3 - Commit 1)
+  # -------------------------------------------------------------
+  nginx:
+    image: nginx:alpine
+    container_name: cms_nginx
+    restart: always
+    depends_on:
+      - wordpress
+    ports:
+      - "${NGINX_HTTP_PORT:-80}:80"
+      - "${NGINX_HTTPS_PORT:-443}:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - nginx_logs:/var/log/nginx
+    networks:
+      - frontend-net
