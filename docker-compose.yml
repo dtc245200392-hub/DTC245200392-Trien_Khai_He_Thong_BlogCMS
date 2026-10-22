@@ -3,7 +3,7 @@ version: '3.8'
 # =============================================================================
 # BÀI TẬP LỚN: TRIỂN KHAI VÀ QUẢN TRỊ HỆ THỐNG BLOG / CMS
 # Sinh viên: Nguyễn Ngọc Chi - MSSV: DTC245200392 - Lớp: CNTT K23C
-# Bước 4 - Commit 2: Tích hợp Giám sát Hệ thống với Prometheus & Grafana
+# Bước 5 - Commit 3: Triển khai Quản lý Log tập trung với Loki & Promtail
 # =============================================================================
 
 networks:
@@ -20,6 +20,7 @@ volumes:
   nginx_logs:
   prometheus_data:
   grafana_data:
+  loki_data:
 
 services:
   # -------------------------------------------------------------
@@ -135,6 +136,7 @@ services:
     restart: always
     depends_on:
       - prometheus
+      - loki
     ports:
       - "${GRAFANA_PORT:-3000}:3000"
     environment:
@@ -168,5 +170,36 @@ services:
       - /var/run:/var/run:ro
       - /sys:/sys:ro
       - /var/lib/docker/:/var/lib/docker:ro
+    networks:
+      - monitoring-net
+
+  # -------------------------------------------------------------
+  # Quản lý Log tập trung: Loki + Promtail (Bước 5 - Commit 3)
+  # -------------------------------------------------------------
+  loki:
+    image: grafana/loki:2.9.0
+    container_name: cms_loki
+    restart: always
+    ports:
+      - "${LOKI_PORT:-3100}:3100"
+    volumes:
+      - ./loki/loki-config.yaml:/etc/loki/local-config.yaml:ro
+      - loki_data:/loki
+    command: -config.file=/etc/loki/local-config.yaml
+    networks:
+      - monitoring-net
+
+  promtail:
+    image: grafana/promtail:2.9.0
+    container_name: cms_promtail
+    restart: always
+    depends_on:
+      - loki
+    volumes:
+      - /var/log:/var/log:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - ./promtail/promtail-config.yml:/etc/promtail/config.yml:ro
+      - nginx_logs:/var/log/nginx:ro
+    command: -config.file=/etc/promtail/config.yml
     networks:
       - monitoring-net

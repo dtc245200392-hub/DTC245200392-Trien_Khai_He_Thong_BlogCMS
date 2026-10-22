@@ -19,7 +19,11 @@ Hệ thống được thiết kế theo mô hình kiến trúc container hóa k�
   - **Prometheus**: Định kỳ scrape metrics từ Node Exporter và cAdvisor mỗi 15s.
   - **Node Exporter**: Thu thập chỉ số tài nguyên phần cứng hệ thống (Host CPU, RAM, Disk).
   - **cAdvisor**: Đo lường và giám sát mức độ tiêu thụ tài nguyên chi tiết của từng Docker container.
-  - **Grafana**: Trực quan hóa dữ liệu thời gian thực với dashboard quản trị tự động nạp (Provisioning).
+  - **Grafana**: Trực quan hóa dữ liệu thời gian thực với dashboard quản trị tự động nạp.
+- **Quản lý Log tập trung (Loki + Promtail)**:
+  - **Promtail**: Tự động thu thập log từ tất cả các Docker container (`/var/lib/docker/containers`) và access/error logs từ Nginx (`/var/log/nginx`).
+  - **Loki Server**: Tiếp nhận, đánh chỉ mục và lưu trữ log hiệu quả.
+  - **Grafana Explore**: Cho phép kỹ trị tra cứu log bằng ngôn ngữ LogQL.
 
 ---
 
@@ -44,11 +48,15 @@ DTC245200392-Trien_Khai_He_Thong_BlogCMS/
 ├── grafana/
 │   ├── provisioning/
 │   │   ├── datasources/
-│   │   │   └── datasources.yml # Tự động cấu hình nguồn Prometheus
+│   │   │   └── datasources.yml # Tự động cấu hình nguồn Prometheus & Loki
 │   │   └── dashboards/
 │   │       └── dashboards.yml  # Tự động nạp dashboard
 │   └── dashboards/
 │       └── docker-metrics.json # Dashboard mẫu giám sát container
+├── loki/
+│   └── loki-config.yaml        # Cấu hình lưu trữ và chỉ mục Loki Server
+├── promtail/
+│   └── promtail-config.yml     # Cấu hình thu thập log Promtail
 └── scripts/
     ├── generate-ssl.sh         # Script sinh chứng chỉ SSL trên Linux/macOS
     └── generate-ssl.bat        # Script sinh chứng chỉ SSL trên Windows
@@ -91,5 +99,26 @@ docker compose ps
 | **phpMyAdmin** | 8081 | [http://localhost:8081](http://localhost:8081) | Hoặc qua [https://localhost/phpmyadmin/](https://localhost/phpmyadmin/) |
 | **Prometheus Web UI** | 9090 | [http://localhost:9090](http://localhost:9090) | Xem trạng thái scrape targets và PromQL |
 | **Grafana Dashboard** | 3000 | [http://localhost:3000](http://localhost:3000) | Đăng nhập: `admin` / `AdminGrafana2026!` |
+| **Loki Server** | 3100 | [http://localhost:3100/ready](http://localhost:3100/ready) | Endpoint log ingestion và API |
 | **Node Exporter** | 9100 | [http://localhost:9100/metrics](http://localhost:9100/metrics) | Chỉ số máy chủ host |
 | **cAdvisor** | 8080 | [http://localhost:8080](http://localhost:8080) | Giao diện và metrics container Docker |
+
+---
+
+## 4. Quản lý Log tập trung và Các truy vấn LogQL mẫu
+
+Vào **Grafana** -> **Explore** -> Chọn nguồn dữ liệu **Loki**:
+
+### Truy vấn 1: Lọc log lỗi HTTP 4xx / 5xx từ Nginx
+```logql
+{job="nginx"} |= "HTTP/1.1" |~ " (4|5)[0-9]{2} "
+```
+
+### Truy vấn 2: Tìm kiếm các thông điệp lỗi hoặc ngoại lệ trong ứng dụng
+```logql
+{container_name=~"cms_wordpress|cms_mysql"} |~ "(?i)(ERROR|Exception|Failed|Fatal)"
+```
+Hoặc đối với job webapp:
+```logql
+{job="webapp"} |~ "(ERROR|Exception|Failed)"
+```
